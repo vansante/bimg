@@ -1,13 +1,12 @@
 language: go
 
-dist: trusty
+dist: bionic
 sudo: false
 
 go:
-  - "1.8"
-  - "1.9"
   - "1.10"
   - "1.11"
+  - "1.12"
   - "tip"
 
 env:
@@ -41,6 +40,7 @@ addons:
       - libgif-dev
       - libgs-dev
       - libgsf-1-dev
+      - libheif-dev
       - libmatio-dev
       - libopenslide-dev
       - liborc-0.4-dev
