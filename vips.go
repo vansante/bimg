@@ -185,6 +185,9 @@ func VipsIsTypeSupported(t ImageType) bool {
 	if t == MAGICK {
 		return int(C.vips_type_find_bridge(C.MAGICK)) != 0
 	}
+	if t == HEIF {
+		return int(C.vips_type_find_bridge(C.HEIF)) != 0
+	}
 	return false
 }
 
@@ -203,6 +206,9 @@ func VipsIsTypeSupportedSave(t ImageType) bool {
 	}
 	if t == TIFF {
 		return int(C.vips_type_find_save_bridge(C.TIFF)) != 0
+	}
+	if t == HEIF {
+		return int(C.vips_type_find_save_bridge(C.HEIF)) != 0
 	}
 	return false
 }
@@ -292,7 +298,7 @@ func vipsWatermark(image *C.VipsImage, w Watermark) (*C.VipsImage, error) {
 	return out, nil
 }
 
-func vipsRead(buf []byte) (*C.VipsImage, ImageType, error) {
+func vipsRead(buf []byte, scale float64) (*C.VipsImage, ImageType, error) {
 	var image *C.VipsImage
 	imageType := vipsImageType(buf)
 
@@ -303,7 +309,7 @@ func vipsRead(buf []byte) (*C.VipsImage, ImageType, error) {
 	length := C.size_t(len(buf))
 	imageBuf := unsafe.Pointer(&buf[0])
 
-	err := C.vips_init_image(imageBuf, length, C.int(imageType), &image)
+	err := C.vips_init_image(imageBuf, length, C.int(imageType), &image, C.double(scale))
 	if err != 0 {
 		return nil, UNKNOWN, catchVipsError()
 	}
@@ -312,7 +318,7 @@ func vipsRead(buf []byte) (*C.VipsImage, ImageType, error) {
 }
 
 func vipsColourspaceIsSupportedBuffer(buf []byte) (bool, error) {
-	image, _, err := vipsRead(buf)
+	image, _, err := vipsRead(buf, 1.0)
 	if err != nil {
 		return false, err
 	}
@@ -325,7 +331,7 @@ func vipsColourspaceIsSupported(image *C.VipsImage) bool {
 }
 
 func vipsInterpretationBuffer(buf []byte) (Interpretation, error) {
-	image, _, err := vipsRead(buf)
+	image, _, err := vipsRead(buf, 1.0)
 	if err != nil {
 		return InterpretationError, err
 	}
@@ -431,6 +437,8 @@ func vipsSave(image *C.VipsImage, o vipsSaveOptions) ([]byte, error) {
 		saveErr = C.vips_pngsave_bridge(tmpImage, &ptr, &length, strip, C.int(o.Compression), quality, interlace)
 	case TIFF:
 		saveErr = C.vips_tiffsave_bridge(tmpImage, &ptr, &length)
+	case HEIF:
+		saveErr = C.vips_heifsave_bridge(tmpImage, &ptr, &length, strip, quality, lossless)
 	default:
 		saveErr = C.vips_jpegsave_bridge(tmpImage, &ptr, &length, strip, quality, interlace)
 	}
@@ -634,6 +642,12 @@ func vipsImageType(buf []byte) ImageType {
 	if IsTypeSupported(MAGICK) && strings.HasSuffix(readImageType(buf), "MagickBuffer") {
 		return MAGICK
 	}
+	// NOTE: libheif current;y only supports heic sub types; see:
+	//   https://github.com/strukturag/libheif/issues/83#issuecomment-421427091
+	if IsTypeSupported(HEIF) && buf[4] == 0x66 && buf[5] == 0x74 && buf[6] == 0x79 && buf[7] == 0x70 &&
+		buf[8] == 0x68 && buf[9] == 0x65 && buf[10] == 0x69 && buf[11] == 0x63 {
+		return HEIF
+	}
 
 	return UNKNOWN
 }
@@ -688,7 +702,7 @@ func max(x int) int {
 func vipsDrawWatermark(image *C.VipsImage, o WatermarkImage) (*C.VipsImage, error) {
 	var out *C.VipsImage
 
-	watermark, _, e := vipsRead(o.Buf)
+	watermark, _, e := vipsRead(o.Buf, 1.0)
 	if e != nil {
 		return nil, e
 	}
